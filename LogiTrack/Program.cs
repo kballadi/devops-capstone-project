@@ -27,7 +27,8 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     // Email confirmation required
     options.SignIn.RequireConfirmedEmail = true;
 })
-    .AddEntityFrameworkStores<LogiTrackContext>();
+    .AddEntityFrameworkStores<LogiTrackContext>()
+    .AddDefaultTokenProviders();
 // Configure JWT authentication
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSection["Key"] ?? "ReplaceThisWithAStrongSecretKeyForDevOnly_ChangeInProd";
