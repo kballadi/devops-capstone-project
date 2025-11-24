@@ -1,9 +1,11 @@
 using LogiTrack.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Manager")]
 public class InventoryController : ControllerBase
 {
     private readonly LogiTrackContext _db;
