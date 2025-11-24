@@ -19,14 +19,20 @@ public class OrderController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetOrders()
     {
-        var orders = await _db.Orders.ToListAsync();
+        // Use AsNoTracking for read-only queries + Include to load related items in single query (eager loading)
+        var orders = await _db.Orders
+            .AsNoTracking()
+            .Include(o => o.Items)
+            .ToListAsync();
         return Ok(orders);
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetOrder(int id)
     {
+        // AsNoTracking for read-only queries + Include for eager loading relationships
         var order = await _db.Orders
+            .AsNoTracking()
             .Include(o => o.Items)
             .FirstOrDefaultAsync(o => o.OrderId == id);
         
@@ -55,7 +61,9 @@ public class OrderController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteOrder(int id)    
     {
-        var order = await _db.Orders.FindAsync(id);
+        // Use FirstOrDefaultAsync for explicit query control instead of FindAsync
+        var order = await _db.Orders
+            .FirstOrDefaultAsync(o => o.OrderId == id);
         if (order == null)
         {
             return NotFound();
