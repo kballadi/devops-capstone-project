@@ -157,3 +157,13 @@ D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiT
 D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\obj\Debug\net10.0\LogiTrack.pdb
 D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\obj\Debug\net10.0\LogiTrack.genruntimeconfig.cache
 D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\obj\Debug\net10.0\ref\LogiTrack.dll
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\obj\Debug\net10.0\LogiTrack.sourcelink.json
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\bin\Debug\net10.0\Microsoft.AspNetCore.Identity.EntityFrameworkCore.dll
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\bin\Debug\net10.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\bin\Debug\net10.0\Microsoft.IdentityModel.Abstractions.dll
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\bin\Debug\net10.0\Microsoft.IdentityModel.JsonWebTokens.dll
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\bin\Debug\net10.0\Microsoft.IdentityModel.Logging.dll
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\bin\Debug\net10.0\Microsoft.IdentityModel.Protocols.dll
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\bin\Debug\net10.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\bin\Debug\net10.0\Microsoft.IdentityModel.Tokens.dll
+D:\LinkedIn_Learning\Azure\Deployment and DevOps\practice\Capstone-Project\LogiTrack\bin\Debug\net10.0\System.IdentityModel.Tokens.Jwt.dll

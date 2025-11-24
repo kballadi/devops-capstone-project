@@ -1,2 +1,30 @@
+# Build output
 bin/
 obj/
+
+# Rider / VS / editor folders
+.vs/
+.vscode/
+.idea/
+
+# User files
+*.user
+*.suo
+*.userosscache
+
+# Database files (local development)
+*.db
+*.db-journal
+logitrack.db
+*.sqlite
+
+# Logs and local runtime files
+*.log
+*.runtimeconfig.dev.json
+
+# Published output
+/publish/
+
+# Temporary files
+*.tmp
+*.temp
