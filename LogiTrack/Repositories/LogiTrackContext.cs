@@ -30,5 +30,26 @@ public class LogiTrackContext : IdentityDbContext<ApplicationUser>
             .WithMany(o => o.Items)
             .HasForeignKey(i => i.OrderId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Performance: Add indexes for frequently queried columns
+        modelBuilder.Entity<InventoryItem>()
+            .HasIndex(i => i.Name)
+            .HasDatabaseName("IX_InventoryItem_Name");
+
+        modelBuilder.Entity<InventoryItem>()
+            .HasIndex(i => i.Quantity)
+            .HasDatabaseName("IX_InventoryItem_Quantity");
+
+        modelBuilder.Entity<InventoryItem>()
+            .HasIndex(i => i.OrderId)
+            .HasDatabaseName("IX_InventoryItem_OrderId");
+
+        modelBuilder.Entity<Order>()
+            .HasIndex(o => o.DatePlaced)
+            .HasDatabaseName("IX_Order_DatePlaced");
+
+        modelBuilder.Entity<Order>()
+            .HasIndex(o => o.CustomerName)
+            .HasDatabaseName("IX_Order_CustomerName");
     }
 }

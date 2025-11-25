@@ -6,31 +6,19 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Caching.Memory;
 using System.ComponentModel.DataAnnotations;
 
-[ApiController]
-[Route("api/[controller]")]
-[Authorize(Roles = "Manager")]
-public class InventoryController : ControllerBase
+namespace LogiTrack.Controllers
 {
-    private readonly LogiTrackContext _db;
-    private readonly IMemoryCache _cache;
-    private readonly IPerformanceProfiler _profiler;
-    private const string CACHE_KEY_ALL_ITEMS = "inventory_all_items";
-    private const int CACHE_DURATION_MINUTES = 5;
-    private const int MAX_PAGE_SIZE = 100;
-    private const int DEFAULT_PAGE_SIZE = 50;
-
-    // Extracted cache options constant to avoid duplication
-    private static readonly MemoryCacheEntryOptions DefaultCacheOptions =
-        new MemoryCacheEntryOptions()
-            .SetAbsoluteExpiration(TimeSpan.FromMinutes(CACHE_DURATION_MINUTES))
-            .SetSlidingExpiration(TimeSpan.FromMinutes(1));
-
-    public InventoryController(LogiTrackContext db, IMemoryCache cache, IPerformanceProfiler profiler)
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize(Roles = "Manager")]
+    public class InventoryController : CachedControllerBase<InventoryItem>
     {
-        _db = db;
-        _cache = cache;
-        _profiler = profiler;
-    }
+        private const string CACHE_KEY_PREFIX = "inventory";
+
+        public InventoryController(LogiTrackContext db, IMemoryCache cache, IPerformanceProfiler profiler)
+            : base(db, cache, profiler)
+        {
+        }
 
     // Validation helper method
     private bool ValidateInventoryItem(InventoryItem item)
@@ -44,23 +32,11 @@ public class InventoryController : ControllerBase
         return true;
     }
 
-    // Cache invalidation helper for batch operations
-    private void InvalidateInventoryCache(int? specificItemId = null)
-    {
-        _cache.Remove(CACHE_KEY_ALL_ITEMS);
-        
-        // Invalidate paginated caches
-        for (int i = 0; i < 10; i++)
+        // Cache invalidation helper - now uses base class method
+        private void InvalidateInventoryCache(int? specificItemId = null)
         {
-            _cache.Remove($"inventory_items_skip_{i * DEFAULT_PAGE_SIZE}_take_{DEFAULT_PAGE_SIZE}");
+            InvalidateCachePattern(CACHE_KEY_PREFIX, specificItemId);
         }
-
-        // Invalidate specific item cache if provided
-        if (specificItemId.HasValue)
-        {
-            _cache.Remove($"inventory_item_{specificItemId}");
-        }
-    }
 
     // Controller actions would go here
     /// <summary>
@@ -72,16 +48,16 @@ public class InventoryController : ControllerBase
         [Range(0, int.MaxValue)] int skip = 0,
         [Range(1, MAX_PAGE_SIZE)] int take = DEFAULT_PAGE_SIZE)
     {
-        var stopwatch = _profiler.StartMeasurement("GetInventoryItems");
-        take = Math.Min(take, MAX_PAGE_SIZE); // Cap at max page size
+            var stopwatch = _profiler?.StartMeasurement("GetInventoryItems");
+            take = Math.Min(take, MAX_PAGE_SIZE); // Cap at max page size
 
-        string cacheKey = $"inventory_items_skip_{skip}_take_{take}";
+            string cacheKey = BuildCacheKey(CACHE_KEY_PREFIX, "items_skip", skip, "take", take);
 
-        // Try to get from cache first
-        if (_cache.TryGetValue(cacheKey, out dynamic? cachedData))
-        {
-            _profiler.StopMeasurement(stopwatch, "GetInventoryItems", usedCache: true);
-            return Ok(new { source = "cache", skip, take, data = cachedData });
+            // Try to get from cache first
+            if (TryGetFromCache(cacheKey, out List<InventoryItem>? cachedData))
+            {
+                _profiler?.StopMeasurement(stopwatch, "GetInventoryItems", usedCache: true);
+                return CacheResponse(cachedData, fromCache: true, new { skip, take });
         }
 
         // If not in cache, fetch from database
@@ -91,13 +67,13 @@ public class InventoryController : ControllerBase
             .OrderBy(i => i.ItemId)
             .Skip(skip)
             .Take(take)
-            .ToListAsync();
+                .ToListAsync();
 
-        // Store in cache
-        _cache.Set(cacheKey, items, DefaultCacheOptions);
+            // Store in cache
+            SetCache(cacheKey, items);
 
-        _profiler.StopMeasurement(stopwatch, "GetInventoryItems", usedCache: false);
-        return Ok(new { source = "database", skip, take, total = totalCount, count = items.Count, data = items });
+            _profiler?.StopMeasurement(stopwatch, "GetInventoryItems", usedCache: false);
+            return CacheResponse(items, fromCache: false, new { skip, take, total = totalCount, count = items.Count });
     }
 
     /// <summary>
@@ -110,17 +86,17 @@ public class InventoryController : ControllerBase
         [Range(0, int.MaxValue)] int? minQuantity = null,
         [Range(1, MAX_PAGE_SIZE)] int take = DEFAULT_PAGE_SIZE)
     {
-        var stopwatch = _profiler.StartMeasurement("SearchItems");
-        take = Math.Min(take, MAX_PAGE_SIZE);
+            var stopwatch = _profiler?.StartMeasurement("SearchItems");
+            take = Math.Min(take, MAX_PAGE_SIZE);
 
-        string cacheKey = $"inventory_search_name_{name}_qty_{minQuantity}_take_{take}";
+            string cacheKey = BuildCacheKey(CACHE_KEY_PREFIX, "search_name", name ?? "null", "qty", minQuantity ?? 0, "take", take);
 
-        // Try cache first
-        if (_cache.TryGetValue(cacheKey, out List<InventoryItem>? cachedResults))
-        {
-            _profiler.StopMeasurement(stopwatch, "SearchItems", usedCache: true);
-            return Ok(new { source = "cache", data = cachedResults });
-        }
+            // Try cache first
+            if (TryGetFromCache(cacheKey, out List<InventoryItem>? cachedResults))
+            {
+                _profiler?.StopMeasurement(stopwatch, "SearchItems", usedCache: true);
+                return CacheResponse(cachedResults, fromCache: true, null);
+            }
 
         // Build query with filters
         var query = _db.InventoryItems.AsNoTracking();
@@ -138,12 +114,12 @@ public class InventoryController : ControllerBase
         var results = await query
             .OrderByDescending(i => i.Quantity)
             .Take(take)
-            .ToListAsync();
+                .ToListAsync();
 
-        _cache.Set(cacheKey, results, DefaultCacheOptions);
+            SetCache(cacheKey, results);
 
-        _profiler.StopMeasurement(stopwatch, "SearchItems", usedCache: false);
-        return Ok(new { source = "database", count = results.Count, data = results });
+            _profiler?.StopMeasurement(stopwatch, "SearchItems", usedCache: false);
+            return CacheResponse(results, fromCache: false, new { count = results.Count });
     }
 
     /// <summary>
@@ -154,16 +130,16 @@ public class InventoryController : ControllerBase
     public async Task<IActionResult> GetInventorySummary(
         [Range(1, MAX_PAGE_SIZE)] int take = DEFAULT_PAGE_SIZE)
     {
-        var stopwatch = _profiler.StartMeasurement("GetInventorySummary");
-        take = Math.Min(take, MAX_PAGE_SIZE);
+            var stopwatch = _profiler?.StartMeasurement("GetInventorySummary");
+            take = Math.Min(take, MAX_PAGE_SIZE);
 
-        string cacheKey = $"inventory_summary_take_{take}";
+            string cacheKey = BuildCacheKey(CACHE_KEY_PREFIX, "summary_take", take);
 
-        if (_cache.TryGetValue(cacheKey, out dynamic? cachedSummary))
-        {
-            _profiler.StopMeasurement(stopwatch, "GetInventorySummary", usedCache: true);
-            return Ok(new { source = "cache", data = cachedSummary });
-        }
+            if (TryGetFromCache(cacheKey, out dynamic? cachedSummary))
+            {
+                _profiler?.StopMeasurement(stopwatch, "GetInventorySummary", usedCache: true);
+                return CacheResponse(cachedSummary, true, null);
+            }
 
         // Projection: only fetch needed columns for better performance
         var summary = await _db.InventoryItems
@@ -177,46 +153,42 @@ public class InventoryController : ControllerBase
             })
             .OrderBy(i => i.ItemId)
             .Take(take)
-            .ToListAsync();
+                .ToListAsync();
 
-        _cache.Set(cacheKey, summary, DefaultCacheOptions);
+            SetCache(cacheKey, summary);
 
-        _profiler.StopMeasurement(stopwatch, "GetInventorySummary", usedCache: false);
-        return Ok(new { source = "database", count = summary.Count, data = summary });
+            _profiler?.StopMeasurement(stopwatch, "GetInventorySummary", usedCache: false);
+            return CacheResponse(summary, fromCache: false, new { count = summary.Count });
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetInventoryItem(int id)
     {
-        string cacheKey = $"inventory_item_{id}";
-        var stopwatch = _profiler.StartMeasurement($"GetInventoryItem({id})");
+            string cacheKey = BuildCacheKey(CACHE_KEY_PREFIX, "item", id);
+            var stopwatch = _profiler?.StartMeasurement($"GetInventoryItem({id})");
 
-        // Try to get from cache first
-        if (_cache.TryGetValue(cacheKey, out InventoryItem? cachedItem))
-        {
-            _profiler.StopMeasurement(stopwatch, $"GetInventoryItem({id})", usedCache: true);
-            return Ok(new { source = "cache", data = cachedItem });
-        }
+            // Try to get from cache first
+            if (TryGetFromCache(cacheKey, out InventoryItem? cachedItem))
+            {
+                _profiler?.StopMeasurement(stopwatch, $"GetInventoryItem({id})", usedCache: true);
+                return CacheResponse(cachedItem, fromCache: true, null);
+            }
 
         // Fetch from database if not cached using AsNoTracking for read-only queries
         var item = await _db.InventoryItems
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.ItemId == id);
-        if (item == null)
-        {
-            _profiler.StopMeasurement(stopwatch, $"GetInventoryItem({id})", usedCache: false);
-            return NotFound();
-        }
+            if (item == null)
+            {
+                _profiler?.StopMeasurement(stopwatch, $"GetInventoryItem({id})", usedCache: false);
+                return NotFound();
+            }
 
-        // Cache the individual item for 5 minutes
-        var cacheOptions = new MemoryCacheEntryOptions()
-            .SetAbsoluteExpiration(TimeSpan.FromMinutes(CACHE_DURATION_MINUTES))
-            .SetSlidingExpiration(TimeSpan.FromMinutes(1));
+            // Cache the individual item
+            SetCache(cacheKey, item);
 
-        _cache.Set(cacheKey, item, cacheOptions);
-
-        _profiler.StopMeasurement(stopwatch, $"GetInventoryItem({id})", usedCache: false);
-        return Ok(new { source = "database", data = item });
+            _profiler?.StopMeasurement(stopwatch, $"GetInventoryItem({id})", usedCache: false);
+            return CacheResponse(item, fromCache: false, null);
     }
 
     [HttpPost]
@@ -316,12 +288,12 @@ public class InventoryController : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("clear-cache")]
-    [Authorize(Roles = "Admin")]
-    public IActionResult ClearCache()
-    {
-        _cache.Remove(CACHE_KEY_ALL_ITEMS);
-        return Ok(new { message = "Cache cleared successfully." });
+        [HttpPost("clear-cache")]
+        [Authorize(Roles = "Admin")]
+        public IActionResult ClearCache()
+        {
+            InvalidateCachePattern(CACHE_KEY_PREFIX);
+            return Ok(new { message = "Cache cleared successfully." });
     }
 
     [HttpGet("performance/stats")]
@@ -357,6 +329,7 @@ public class InventoryController : ControllerBase
     public IActionResult ClearPerformanceMetrics()
     {
         _profiler.ClearMetrics();
-        return Ok(new { message = "Performance metrics cleared." });
+            return Ok(new { message = "Performance metrics cleared." });
+        }
     }
 }
