@@ -5,6 +5,8 @@ using System.IO.Compression;
 using Microsoft.AspNetCore.ResponseCompression;
 using Serilog;
 using FluentValidation;
+using Microsoft.Extensions.Options;
+using static Microsoft.AspNetCore.Http.StatusCodes;
 
 // Production: Configure Serilog for structured logging
 Log.Logger = new LoggerConfiguration()
@@ -13,6 +15,13 @@ Log.Logger = new LoggerConfiguration()
     .CreateBootstrapLogger();
 
 var builder = WebApplication.CreateBuilder(args);
+if (builder.Environment.IsDevelopment())
+{
+    builder.WebHost.UseKestrel(options =>
+    {
+        options.AllowSynchronousIO = true;
+    });
+}
 
 // Production: Use Serilog
 builder.Host.UseSerilog((context, services, configuration) => configuration
@@ -24,10 +33,13 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .WriteTo.File("logs/logitrack-.txt", rollingInterval: RollingInterval.Day));
 
 // Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddSwaggerGen();
+
 builder.Services.AddDbContext<LogiTrackContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=logitrack.db"));
+    options.UseMySql(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        ServerVersion.AutoDetect(builder.Configuration.GetConnectionString("DefaultConnection"))
+    ));
 builder.Services.AddMemoryCache();
 
 // Performance: Add response compression
@@ -68,6 +80,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 })
     .AddEntityFrameworkStores<LogiTrackContext>()
     .AddDefaultTokenProviders();
+
 // Configure JWT authentication
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSection["Key"] ?? "ReplaceThisWithAStrongSecretKeyForDevOnly_ChangeInProd";
@@ -97,12 +110,17 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("RequireAdmin", policy => policy.RequireRole("Admin"));
 });
 
-// Configure CORS: restrict to known origins
+// Configure CORS: UNCOMMENTED - This was your issue!
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowLocalhost", policy =>
     {
-        policy.WithOrigins("https://localhost:5173", "https://localhost:3000", "http://localhost:3000")
+        policy.WithOrigins("https://localhost:5173", 
+                            "https://localhost:3000", 
+                            "http://localhost:3000",
+                            "http://localhost:5184",
+                            "https://localhost:7003",
+                            "https://localhost:5184")
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
@@ -146,26 +164,35 @@ builder.Services.AddHealthChecks()
 // Production: Add global exception handler
 builder.Services.AddExceptionHandler<LogiTrack.Middleware.GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
+builder.Services.AddHttpsRedirection(options =>
+{
+    options.RedirectStatusCode = Status307TemporaryRedirect;
+    options.HttpsPort = 5001;
+});
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 // Performance: Enable response compression
 app.UseResponseCompression();
 
-app.UseHttpsRedirection();
+// REMOVED: app.UseHttpsRedirection() - This can cause issues in development
+// Only use HTTPS redirection in production or when you have certificates properly configured
 
 app.UseMiddleware<LogiTrack.Middleware.RateLimitingMiddleware>();
 
+// CORS must come before Authentication and Authorization
 app.UseCors("AllowLocalhost");
 
 app.UseAuthentication();
 app.UseAuthorization();
+
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
@@ -183,8 +210,7 @@ app.UseExceptionHandler();
 // Production: Add health check endpoints
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/ready");
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
 
 app.MapControllers();
 app.Run();
-
-

@@ -1,0 +1,109 @@
+---
+# ConfigMap for application settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logitrack-config
+  namespace: default
+data:
+  ASPNETCORE_ENVIRONMENT: "Development"
+  AllowedHosts: "*"
+  
+---
+# Secret for sensitive data (MySQL connection)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: logitrack-secrets
+  namespace: default
+type: Opaque
+stringData:
+  MYSQL_CONNECTION: "server=mysql;port=3306;database=logitrack;user=root;password=123456;AllowPublicKeyRetrieval=true;"
+  JWT_KEY: "ReplaceThisWithAStrongSecretKeyForDevOnly_ChangeInProd"
+  
+---
+# Deployment for LogiTrack API
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logitrack-api
+  namespace: default
+  labels:
+    app: logitrack-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: logitrack-api
+  template:
+    metadata:
+      labels:
+        app: logitrack-api
+    spec:
+      containers:
+      - name: logitrack-api
+        image: logitrack-api:v1
+        imagePullPolicy: Never  # Use local image from kind
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: logitrack-config
+              key: ASPNETCORE_ENVIRONMENT
+        - name: ConnectionStrings__DefaultConnection
+          valueFrom:
+            secretKeyRef:
+              name: logitrack-secrets
+              key: MYSQL_CONNECTION
+        - name: Jwt__Key
+          valueFrom:
+            secretKeyRef:
+              name: logitrack-secrets
+              key: JWT_KEY
+        - name: AllowedHosts
+          valueFrom:
+            configMapKeyRef:
+              name: logitrack-config
+              key: AllowedHosts
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          
+---
+# Service to expose LogiTrack API
+apiVersion: v1
+kind: Service
+metadata:
+  name: logitrack-api-service
+  namespace: default
+  labels:
+    app: logitrack-api
+spec:
+  type: NodePort
+  selector:
+    app: logitrack-api
+  ports:
+  - port: 80
+    targetPort: 8080
+    nodePort: 30080
+    protocol: TCP
+    name: http
